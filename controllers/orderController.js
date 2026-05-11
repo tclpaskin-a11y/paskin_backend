@@ -2,6 +2,8 @@ import Cart from '../models/Cart.js'
 import Order from '../models/Order.js'
 import Product from '../models/Product.js'
 import Address from '../models/Address.js'
+import User from '../models/User.js'
+import { sendOrderConfirmationEmail } from '../emailTemplates/emailService.js'
 
 export const placeOrder = async (req, res, next) => {
   try {
@@ -16,9 +18,12 @@ export const placeOrder = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'addressId is required' })
     }
 
-    if (paymentMethod !== 'COD') {
-      return res.status(400).json({ success: false, message: 'Only COD is supported for paymentMethod' })
-    }
+    if (!['COD', 'UPI'].includes(paymentMethod)) {
+  return res.status(400).json({
+    success: false,
+    message: 'Invalid payment method'
+  })
+}
 
     const address = await Address.findOne({ _id: addressId, userId })
     if (!address) {
@@ -31,6 +36,7 @@ export const placeOrder = async (req, res, next) => {
     }
 
     const orderProducts = []
+    const emailProducts = []
     let totalAmount = 0
 
     for (const item of cart.products) {
@@ -46,6 +52,15 @@ export const placeOrder = async (req, res, next) => {
         quantity: item.quantity,
         price: productPrice
       })
+
+      // Collect product details for email
+      emailProducts.push({
+        productName: product.name,
+        productDescription: product.description || 'N/A',
+        price: productPrice,
+        quantity: item.quantity,
+        productImage: product.images && product.images[0] ? product.images[0] : null
+      })
     }
 
     const order = await Order.create({
@@ -58,13 +73,46 @@ export const placeOrder = async (req, res, next) => {
         email: contact.email?.trim() || ''
       },
       address: address._id,
-      paymentMethod: 'COD',
-      paymentStatus: 'pending',
-      orderStatus: 'ordered'
+      paymentMethod,
+paymentStatus:
+  paymentMethod === 'UPI' ? 'success' : 'pending',
+
+transactionId:
+  req.body.transactionId || null,
+
+orderStatus: 'ordered'
     })
 
     cart.products = []
     await cart.save()
+
+    // Send order confirmation email
+    try {
+      const user = await User.findById(userId)
+      if (user) {
+        const emailData = {
+          email: contact.email || user.email,
+          orderNumber: order._id.toString().slice(-8).toUpperCase(),
+          userName: contact.name,
+          products: emailProducts,
+          totalAmount,
+          deliveryAddress: {
+            addressLine: address.addressLine,
+            city: address.city,
+            state: address.state,
+            pinCode: address.pinCode
+          },
+          contact: {
+            name: contact.name,
+            mobile: contact.mobile
+          }
+        }
+        await sendOrderConfirmationEmail(emailData)
+      }
+    } catch (emailError) {
+      console.error('Failed to send order confirmation email:', emailError.message)
+      // Don't fail the order if email fails, just log it
+    }
 
     res.status(201).json({ success: true, data: order })
   } catch (error) {
