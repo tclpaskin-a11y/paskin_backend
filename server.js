@@ -18,7 +18,7 @@ import paymentApp from './src/app.js'
 const app = express()
 
 const corsOptions = {
-  origin: ['https://bugyboo.com', 'https://www.bugyboo.com' , 'http://localhost:8080'],
+  origin: ['https://paskin.co.in', 'https://www.paskin.co.in' , 'http://localhost:8080'],
   credentials: true
 }
 
