@@ -7,6 +7,7 @@ import connectDB from './config/db.js'
 import authRoutes from './routes/authRoutes.js'
 import adminRoutes from './routes/adminRoutes.js'
 import productPublicRoutes from './routes/productPublicRoutes.js'
+import categoryPublicRoutes from './routes/categoryPublicRoutes.js'
 import cartRoutes from './routes/cartRoutes.js'
 import addressRoutes from './routes/addressRoutes.js'
 import userOrderRoutes from './routes/userOrderRoutes.js'
@@ -29,6 +30,7 @@ app.use(cookieParser())
 app.use('/api/auth', authRoutes)
 app.use('/api/admin', adminRoutes)
 app.use('/api/products', productPublicRoutes)
+app.use('/api/categories', categoryPublicRoutes)
 app.use('/api/cart', cartRoutes)
 app.use('/api/address', addressRoutes)
 app.use('/api/orders', userOrderRoutes)
