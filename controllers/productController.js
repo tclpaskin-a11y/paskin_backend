@@ -18,6 +18,10 @@ export const formatProductResponse = (product) => {
   const resolvedImages = p.images !== undefined ? p.images : []
   const resolvedImage = p.image !== undefined ? p.image : (resolvedImages.length > 0 ? resolvedImages[0] : null)
 
+  const rawStock = p.stock !== undefined && p.stock !== null ? Number(p.stock) : 0
+  const finalStock = rawStock < 0 ? 0 : rawStock
+  const inStock = finalStock > 0
+
   return {
     _id: p._id,
     productName: resolvedProductName,
@@ -30,7 +34,8 @@ export const formatProductResponse = (product) => {
     basePrice: p.basePrice !== undefined ? p.basePrice : null,
     sellPrice: p.sellPrice !== undefined ? p.sellPrice : null,
     gst: p.gst !== undefined ? p.gst : null,
-    stock: p.stock !== undefined ? p.stock : null,
+    stock: finalStock,
+    inStock: inStock,
     image: resolvedImage,
     images: resolvedImages,
     isPaused: p.isPaused !== undefined ? p.isPaused : false,

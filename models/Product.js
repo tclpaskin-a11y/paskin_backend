@@ -39,7 +39,8 @@ const productSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.Mixed
   },
   stock: {
-    type: mongoose.Schema.Types.Mixed
+    type: Number,
+    default: 0
   },
   images: [
     {

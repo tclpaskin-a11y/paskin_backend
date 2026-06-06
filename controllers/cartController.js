@@ -15,6 +15,15 @@ export const addToCart = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Product not found' })
     }
 
+    const rawStock = product.stock !== undefined && product.stock !== null ? Number(product.stock) : 0
+    const finalStock = rawStock < 0 ? 0 : rawStock
+    if (finalStock <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Product is out of stock'
+      })
+    }
+
     const qty = Math.max(1, Number(quantity) || 1)
 
     let cart = await Cart.findOne({ userId })
