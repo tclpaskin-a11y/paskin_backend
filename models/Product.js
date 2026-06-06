@@ -1,44 +1,45 @@
 import mongoose from 'mongoose'
 
 const productSchema = new mongoose.Schema({
+  productName: {
+    type: mongoose.Schema.Types.Mixed
+  },
   name: {
-    type: String,
-    required: [true, 'Product name is required'],
-    trim: true
+    type: mongoose.Schema.Types.Mixed
   },
   category: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Category',
-    required: [true, 'Category is required']
+    type: mongoose.Schema.Types.Mixed,
+    ref: 'Category'
   },
   color: {
-    type: String,
-    required: [true, 'Color is required'],
-    trim: true
+    type: mongoose.Schema.Types.Mixed
   },
   size: {
-    type: String,
-    trim: true
+    type: mongoose.Schema.Types.Mixed
   },
   description: {
-    type: String,
-    trim: true
+    type: mongoose.Schema.Types.Mixed
+  },
+  benefits: {
+    type: mongoose.Schema.Types.Mixed
+  },
+  usage: {
+    type: mongoose.Schema.Types.Mixed
+  },
+  ingredients: {
+    type: mongoose.Schema.Types.Mixed
   },
   basePrice: {
-    type: Number,
-    required: [true, 'Base price is required'],
-    min: [0, 'Base price must be positive']
+    type: mongoose.Schema.Types.Mixed
   },
   sellPrice: {
-    type: Number,
-    required: [true, 'Sell price is required'],
-    min: [0, 'Sell price must be positive']
+    type: mongoose.Schema.Types.Mixed
   },
   gst: {
-    type: Number,
-    required: [true, 'GST is required'],
-    min: [0, 'GST must be positive'],
-    default: 0
+    type: mongoose.Schema.Types.Mixed
+  },
+  stock: {
+    type: mongoose.Schema.Types.Mixed
   },
   images: [
     {
@@ -58,3 +59,4 @@ const productSchema = new mongoose.Schema({
 
 const Product = mongoose.model('Product', productSchema)
 export default Product
+

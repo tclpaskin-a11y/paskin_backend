@@ -1,51 +1,110 @@
+import mongoose from 'mongoose'
 import Product from '../models/Product.js'
 import Category from '../models/Category.js'
+
+// Format response structure for backward compatibility and clean API structure
+export const formatProductResponse = (product) => {
+  if (!product) return null
+  const p = product.toObject ? product.toObject({ virtuals: true }) : { ...product }
+
+  // Sync/resolve productName and name
+  const resolvedProductName = p.productName !== undefined ? p.productName : (p.name !== undefined ? p.name : null)
+  const resolvedName = p.name !== undefined ? p.name : (p.productName !== undefined ? p.productName : null)
+
+  // Resolve category (plain ObjectId or populated object)
+  const resolvedCategory = p.category !== undefined ? p.category : null
+
+  // Resolve images array & image string (pointing to images[0] dynamically)
+  const resolvedImages = p.images !== undefined ? p.images : []
+  const resolvedImage = p.image !== undefined ? p.image : (resolvedImages.length > 0 ? resolvedImages[0] : null)
+
+  return {
+    _id: p._id,
+    productName: resolvedProductName,
+    name: resolvedName,
+    category: resolvedCategory,
+    description: p.description !== undefined ? p.description : null,
+    benefits: p.benefits !== undefined ? p.benefits : null,
+    usage: p.usage !== undefined ? p.usage : null,
+    ingredients: p.ingredients !== undefined ? p.ingredients : null,
+    basePrice: p.basePrice !== undefined ? p.basePrice : null,
+    sellPrice: p.sellPrice !== undefined ? p.sellPrice : null,
+    gst: p.gst !== undefined ? p.gst : null,
+    stock: p.stock !== undefined ? p.stock : null,
+    image: resolvedImage,
+    images: resolvedImages,
+    isPaused: p.isPaused !== undefined ? p.isPaused : false,
+    createdAt: p.createdAt !== undefined ? p.createdAt : null,
+    __v: p.__v
+  }
+}
+
+export const formatProductsResponse = (products) => {
+  if (!products) return []
+  return products.map(formatProductResponse)
+}
 
 export const createProduct = async (req, res, next) => {
   try {
     const {
-      name,
+      productName,
+      name: bodyName,
       category,
-      color,
-      size,
       description,
-      basePrice,
-      sellPrice,
-      gst
-    } = req.body
-
-    if (!req.files || req.files.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'At least one media file is required'
-      })
-    }
-
-    const categoryExists = await Category.findById(category)
-    if (!categoryExists) {
-      return res.status(404).json({
-        success: false,
-        message: 'Category not found'
-      })
-    }
-
-    const images = req.files.map(file => file.location || file.key)
-
-    const product = await Product.create({
-      name,
-      category,
-      color,
-      size,
-      description,
+      benefits,
+      usage,
+      ingredients,
       basePrice,
       sellPrice,
       gst,
+      stock
+    } = req.body
+
+    // Sync name and productName automatically
+    const finalName = productName !== undefined ? productName : bodyName
+    const finalProductName = productName !== undefined ? productName : bodyName
+
+    // Extract category ID if passed as object, or check ID if passed as string
+    let categoryId = null
+    if (category) {
+      categoryId = (category && typeof category === 'object' && category._id) ? category._id : category
+      
+      if (mongoose.isValidObjectId(categoryId)) {
+        const categoryExists = await Category.findById(categoryId)
+        if (!categoryExists) {
+          return res.status(404).json({
+            success: false,
+            message: 'Category not found'
+          })
+        }
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid category ID format'
+        })
+      }
+    }
+
+    const images = req.files ? req.files.map(file => file.location || file.key) : []
+
+    const product = await Product.create({
+      productName: finalProductName,
+      name: finalName,
+      category: categoryId,
+      description,
+      benefits,
+      usage,
+      ingredients,
+      basePrice,
+      sellPrice,
+      gst,
+      stock,
       images
     })
 
     res.status(201).json({
       success: true,
-      data: product
+      data: formatProductResponse(product)
     })
   } catch (error) {
     next(error)
@@ -55,7 +114,7 @@ export const createProduct = async (req, res, next) => {
 export const getProducts = async (req, res, next) => {
   try {
     const products = await Product.find().populate('category', 'name')
-    res.json({ success: true, data: products })
+    res.json({ success: true, data: formatProductsResponse(products) })
   } catch (error) {
     next(error)
   }
@@ -64,7 +123,7 @@ export const getProducts = async (req, res, next) => {
 export const getPublicProducts = async (req, res, next) => {
   try {
     const products = await Product.find({ isPaused: false }).populate('category', 'name')
-    res.json({ success: true, data: products })
+    res.json({ success: true, data: formatProductsResponse(products) })
   } catch (error) {
     next(error)
   }
@@ -77,7 +136,7 @@ export const getPublicProductById = async (req, res, next) => {
     if (!product) {
       return res.status(404).json({ success: false, message: 'Product not found' })
     }
-    res.json({ success: true, data: product })
+    res.json({ success: true, data: formatProductResponse(product) })
   } catch (error) {
     next(error)
   }
@@ -95,11 +154,12 @@ export const searchPublicProducts = async (req, res, next) => {
       isPaused: false,
       $or: [
         { name: { $regex: query, $options: 'i' } },
+        { productName: { $regex: query, $options: 'i' } },
         { description: { $regex: query, $options: 'i' } }
       ]
     }).populate('category', 'name')
 
-    res.json({ success: true, data: products })
+    res.json({ success: true, data: formatProductsResponse(products) })
   } catch (error) {
     next(error)
   }
@@ -110,15 +170,41 @@ export const updateProduct = async (req, res, next) => {
     const { id } = req.params
     const updateData = { ...req.body }
 
+    // Sync name and productName automatically
+    if (updateData.productName !== undefined) {
+      updateData.name = updateData.productName
+    } else if (updateData.name !== undefined) {
+      updateData.productName = updateData.name
+    }
+
     if (updateData.category) {
-      const categoryExists = await Category.findById(updateData.category)
-      if (!categoryExists) {
-        return res.status(404).json({
+      const categoryId = (updateData.category && typeof updateData.category === 'object' && updateData.category._id) 
+        ? updateData.category._id 
+        : updateData.category
+
+      if (mongoose.isValidObjectId(categoryId)) {
+        const categoryExists = await Category.findById(categoryId)
+        if (!categoryExists) {
+          return res.status(404).json({
+            success: false,
+            message: 'Category not found'
+          })
+        }
+        updateData.category = categoryId
+      } else {
+        return res.status(400).json({
           success: false,
-          message: 'Category not found'
+          message: 'Invalid category ID format'
         })
       }
     }
+
+    // Only update fields present in request body. Never overwrite existing values with undefined.
+    Object.keys(updateData).forEach(key => {
+      if (updateData[key] === undefined) {
+        delete updateData[key]
+      }
+    })
 
     const product = await Product.findByIdAndUpdate(id, updateData, {
       new: true,
@@ -129,7 +215,7 @@ export const updateProduct = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Product not found' })
     }
 
-    res.json({ success: true, data: product })
+    res.json({ success: true, data: formatProductResponse(product) })
   } catch (error) {
     next(error)
   }
@@ -162,8 +248,9 @@ export const pauseProduct = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Product not found' })
     }
 
-    res.json({ success: true, data: product })
+    res.json({ success: true, data: formatProductResponse(product) })
   } catch (error) {
     next(error)
   }
 }
+
