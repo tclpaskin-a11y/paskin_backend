@@ -1,20 +1,27 @@
 import Payment from '../models/paymentModel.js'
-import { createRazorpayOrder, verifyRazorpaySignature } from '../services/razorpayService.js'
+import { createRazorpayOrder, verifyRazorpaySignature, fetchRazorpayPayment } from '../services/razorpayService.js'
 import { errorResponse, successResponse } from '../utils/response.js'
-
-const convertRupeesToPaise = (amount) => Math.round(Number(amount) * 100)
 
 export const createOrder = async (req, res) => {
   try {
     const { amount, currency, receipt } = req.body
     const amountNumber = Number(amount)
 
+    // Validate amount > 0 and amount >= 100 paise
     if (Number.isNaN(amountNumber) || amountNumber < 100) {
       return errorResponse(res, 'Amount must be at least 100 paise', 400)
     }
 
+    // Validate currency === 'INR'
+    if (currency && currency !== 'INR') {
+      return errorResponse(res, 'Currency must be INR', 400)
+    }
+
     const amountInPaise = Math.round(amountNumber)
-    const order = await createRazorpayOrder(amountInPaise, currency, receipt)
+    const order = await createRazorpayOrder(amountInPaise, currency || 'INR', receipt)
+
+    // Safe logs only
+    console.log(`Order created: ${order.id}, Amount: ${order.amount}, Currency: ${order.currency}`)
 
     return res.status(201).json({
       success: true,
@@ -31,7 +38,7 @@ export const createOrder = async (req, res) => {
       }
     })
   } catch (error) {
-    console.error('createOrder error:', error)
+    console.error('createOrder error:', error.message)
     return errorResponse(res, 'Unable to create Razorpay order', 500)
   }
 }
@@ -40,11 +47,12 @@ export const verifyPayment = async (req, res) => {
   try {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body
 
-    // Ensure all fields are present
+    // Ensure all fields are present (Step 7: Production Safety)
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
       return errorResponse(res, 'Missing required fields', 400)
     }
 
+    // STEP 3: Verify Signature
     const isValid = verifyRazorpaySignature({
       razorpay_order_id,
       razorpay_payment_id,
@@ -52,8 +60,32 @@ export const verifyPayment = async (req, res) => {
     })
 
     if (!isValid) {
-      return errorResponse(res, 'Payment verification failed', 400)
+      console.log(`Verification failed: Signature mismatch for Order: ${razorpay_order_id}`)
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid signature'
+      })
     }
+
+    // STEP 5: Payment Status Validation (Fetch from Razorpay API)
+    let paymentDetails
+    try {
+      paymentDetails = await fetchRazorpayPayment(razorpay_payment_id)
+    } catch (apiError) {
+      console.error(`Razorpay API error fetching payment ${razorpay_payment_id}:`, apiError.message)
+      return errorResponse(res, 'Failed to fetch payment details from Razorpay', 500)
+    }
+
+    if (paymentDetails.status !== 'captured') {
+      console.log(`Verification failed: Payment ${razorpay_payment_id} status is ${paymentDetails.status}, expected captured`)
+      return res.status(400).json({
+        success: false,
+        message: 'Payment not captured'
+      })
+    }
+
+    // Safe logs: keep only payment_id, order_id, verification status
+    console.log(`Payment verified successfully: Payment ID: ${razorpay_payment_id}, Order ID: ${razorpay_order_id}`)
 
     let paymentRecord = null
     try {
@@ -76,7 +108,7 @@ export const verifyPayment = async (req, res) => {
       ...(paymentRecord ? { paymentRecordId: paymentRecord._id } : {})
     })
   } catch (error) {
-    console.error('verifyPayment error:', error)
+    console.error('verifyPayment error:', error.message)
     return errorResponse(res, 'Payment verification failed', 500)
   }
 }

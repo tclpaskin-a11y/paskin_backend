@@ -29,3 +29,7 @@ export const verifyRazorpaySignature = ({ razorpay_order_id, razorpay_payment_id
 
   return generatedSignature === razorpay_signature
 }
+
+export const fetchRazorpayPayment = async (paymentId) => {
+  return await razorpay.payments.fetch(paymentId)
+}

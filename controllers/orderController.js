@@ -3,6 +3,7 @@ import Order from '../models/Order.js'
 import Product from '../models/Product.js'
 import Address from '../models/Address.js'
 import User from '../models/User.js'
+import Payment from '../src/models/paymentModel.js'
 import { sendOrderConfirmationEmail } from '../emailTemplates/emailService.js'
 
 export const placeOrder = async (req, res, next) => {
@@ -19,11 +20,25 @@ export const placeOrder = async (req, res, next) => {
     }
 
     if (!['COD', 'UPI'].includes(paymentMethod)) {
-  return res.status(400).json({
-    success: false,
-    message: 'Invalid payment method'
-  })
-}
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid payment method'
+      })
+    }
+
+    const transactionId = req.body.transactionId || null
+
+    if (paymentMethod === 'UPI') {
+      if (!transactionId) {
+        return res.status(400).json({ success: false, message: 'Transaction ID is required for UPI payments' })
+      }
+      
+      // Verify payment was verified and captured in database
+      const paymentRecord = await Payment.findOne({ razorpayPaymentId: transactionId, status: 'paid' })
+      if (!paymentRecord) {
+        return res.status(400).json({ success: false, message: 'Invalid or unpaid transaction ID' })
+      }
+    }
 
     const address = await Address.findOne({ _id: addressId, userId })
     if (!address) {
