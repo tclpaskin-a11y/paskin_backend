@@ -5,6 +5,7 @@ import { createOrderValidation, validatePaymentVerification, validateRequest } f
 const router = express.Router()
 
 router.post('/create-order', createOrderValidation, validateRequest, createOrder)
+router.post('/verify-payment', validatePaymentVerification, validateRequest, verifyPayment)
 router.post('/verify', validatePaymentVerification, validateRequest, verifyPayment)
 
 export default router

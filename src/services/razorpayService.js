@@ -3,11 +3,11 @@ import razorpay from '../config/razorpayConfig.js'
 
 const createReceiptId = () => `receipt_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
 
-export const createRazorpayOrder = async (amountInPaise) => {
+export const createRazorpayOrder = async (amountInPaise, currency = 'INR', receipt) => {
   const options = {
     amount: amountInPaise,
-    currency: 'INR',
-    receipt: createReceiptId(),
+    currency: currency || 'INR',
+    receipt: receipt || createReceiptId(),
     payment_capture: 1
   }
 
