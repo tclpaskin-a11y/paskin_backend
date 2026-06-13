@@ -7,6 +7,7 @@ import Payment from '../src/models/paymentModel.js'
 import { sendOrderConfirmationEmail } from '../emailTemplates/emailService.js'
 
 export const placeOrder = async (req, res, next) => {
+  console.log("ORDER REQUEST RECEIVED, full body:", req.body);
   try {
     const userId = req.user.id
     const { contact, addressId, paymentMethod } = req.body
@@ -26,7 +27,7 @@ export const placeOrder = async (req, res, next) => {
       })
     }
 
-    const transactionId = req.body.transactionId || null
+    const transactionId = req.body.transactionId || req.body.razorpayPaymentId || null
 
     if (paymentMethod === 'UPI') {
       if (!transactionId) {
@@ -87,6 +88,8 @@ export const placeOrder = async (req, res, next) => {
       })
     }
 
+    console.log("ORDER VALIDATION PASSED");
+
     const order = await Order.create({
       user: userId,
       products: orderProducts,
@@ -98,14 +101,12 @@ export const placeOrder = async (req, res, next) => {
       },
       address: address._id,
       paymentMethod,
-paymentStatus:
-  paymentMethod === 'UPI' ? 'success' : 'pending',
-
-transactionId:
-  req.body.transactionId || null,
-
-orderStatus: 'ordered'
+      paymentStatus: paymentMethod === 'UPI' ? 'success' : 'pending',
+      transactionId: transactionId,
+      orderStatus: 'ordered'
     })
+
+    console.log("ORDER SAVED");
 
     cart.products = []
     await cart.save()
@@ -138,8 +139,10 @@ orderStatus: 'ordered'
       // Don't fail the order if email fails, just log it
     }
 
+    console.log("ORDER RESPONSE SENT");
     res.status(201).json({ success: true, data: order })
   } catch (error) {
+    console.error(error);
     next(error)
   }
 }

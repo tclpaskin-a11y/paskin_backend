@@ -39,12 +39,14 @@ export const createOrder = async (req, res) => {
     })
   } catch (error) {
     console.error('createOrder error:', error.message)
+    console.error(error)
     return errorResponse(res, 'Unable to create Razorpay order', 500)
   }
 }
 
 export const verifyPayment = async (req, res) => {
   try {
+    console.log('Incoming payload:', req.body)
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body
 
     // Ensure all fields are present (Step 7: Production Safety)
@@ -58,6 +60,8 @@ export const verifyPayment = async (req, res) => {
       razorpay_payment_id,
       razorpay_signature
     })
+
+    console.log('Verification result:', isValid)
 
     if (!isValid) {
       console.log(`Verification failed: Signature mismatch for Order: ${razorpay_order_id}`)
@@ -73,6 +77,7 @@ export const verifyPayment = async (req, res) => {
       paymentDetails = await fetchRazorpayPayment(razorpay_payment_id)
     } catch (apiError) {
       console.error(`Razorpay API error fetching payment ${razorpay_payment_id}:`, apiError.message)
+      console.error(apiError)
       return errorResponse(res, 'Failed to fetch payment details from Razorpay', 500)
     }
 
@@ -97,6 +102,7 @@ export const verifyPayment = async (req, res) => {
       })
     } catch (dbError) {
       console.error('Payment DB save error (non-fatal):', dbError.message)
+      console.error(dbError)
     }
 
     return res.status(200).json({
@@ -109,6 +115,7 @@ export const verifyPayment = async (req, res) => {
     })
   } catch (error) {
     console.error('verifyPayment error:', error.message)
+    console.error(error)
     return errorResponse(res, 'Payment verification failed', 500)
   }
 }
