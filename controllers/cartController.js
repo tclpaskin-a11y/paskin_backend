@@ -15,6 +15,10 @@ export const addToCart = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Product not found' })
     }
 
+    if (product.isPaused) {
+      return res.status(400).json({ success: false, message: 'Product is currently paused and cannot be purchased' })
+    }
+
     const rawStock = product.stock !== undefined && product.stock !== null ? Number(product.stock) : 0
     const finalStock = rawStock < 0 ? 0 : rawStock
     if (finalStock <= 0) {
@@ -52,7 +56,19 @@ export const addToCart = async (req, res, next) => {
 export const getCart = async (req, res, next) => {
   try {
     const userId = req.user.id
-    const cart = await Cart.findOne({ userId }).populate('products.productId', 'name sellPrice images')
+    let cart = await Cart.findOne({ userId }).populate('products.productId', 'name sellPrice images isPaused stock')
+    
+    if (cart) {
+      // Check if there are any products that failed to populate (null) because they were deleted
+      const hasInvalidProducts = cart.products.some(item => item.productId === null)
+      if (hasInvalidProducts) {
+        cart.products = cart.products.filter(item => item.productId !== null)
+        await cart.save()
+        // Re-populate to get the cleaned cart
+        cart = await Cart.findOne({ userId }).populate('products.productId', 'name sellPrice images isPaused stock')
+      }
+    }
+    
     res.json({ success: true, data: cart || { userId, products: [] } })
   } catch (error) {
     next(error)

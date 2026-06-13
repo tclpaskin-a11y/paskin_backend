@@ -7,7 +7,6 @@ import Payment from '../src/models/paymentModel.js'
 import { sendOrderConfirmationEmail } from '../emailTemplates/emailService.js'
 
 export const placeOrder = async (req, res, next) => {
-  console.log("ORDER REQUEST RECEIVED, full body:", req.body);
   try {
     const userId = req.user.id
     const { contact, addressId, paymentMethod } = req.body
@@ -29,6 +28,16 @@ export const placeOrder = async (req, res, next) => {
 
     const transactionId = req.body.transactionId || req.body.razorpayPaymentId || null
 
+    if (transactionId) {
+      const existingOrder = await Order.findOne({ transactionId })
+      if (existingOrder) {
+        return res.status(400).json({
+          success: false,
+          message: 'An order has already been created for this payment. Please check your order history.'
+        })
+      }
+    }
+
     if (paymentMethod === 'UPI') {
       if (!transactionId) {
         return res.status(400).json({ success: false, message: 'Transaction ID is required for UPI payments' })
@@ -37,7 +46,7 @@ export const placeOrder = async (req, res, next) => {
       // Verify payment was verified and captured in database
       const paymentRecord = await Payment.findOne({ razorpayPaymentId: transactionId, status: 'paid' })
       if (!paymentRecord) {
-        return res.status(400).json({ success: false, message: 'Invalid or unpaid transaction ID' })
+        return res.status(400).json({ success: false, message: 'Payment verification failed. Please contact support if money was deducted.' })
       }
     }
 
@@ -58,7 +67,20 @@ export const placeOrder = async (req, res, next) => {
     for (const item of cart.products) {
       const product = await Product.findById(item.productId)
       if (!product) {
-        return res.status(404).json({ success: false, message: `Product not found: ${item.productId}` })
+        console.error(`Missing Product ID: ${item.productId}, Cart ID: ${cart._id}, User ID: ${userId}`)
+        return res.status(404).json({
+          success: false,
+          message: 'This item is no longer available.',
+          productId: item.productId
+        })
+      }
+
+      if (product.isPaused) {
+        return res.status(400).json({
+          success: false,
+          message: 'This product is temporarily unavailable.',
+          productId: item.productId
+        })
       }
 
       const rawStock = product.stock !== undefined && product.stock !== null ? Number(product.stock) : 0
@@ -66,9 +88,19 @@ export const placeOrder = async (req, res, next) => {
       if (finalStock <= 0) {
         return res.status(400).json({
           success: false,
-          message: 'Product is out of stock'
+          message: 'This product is out of stock.'
         })
       }
+      if (finalStock < item.quantity) {
+        return res.status(400).json({
+          success: false,
+          message: `Only ${finalStock} items are currently available.`
+        })
+      }
+
+      // Decrement stock
+      product.stock = finalStock - item.quantity
+      await product.save()
 
       const productPrice = product.sellPrice ?? 0
       totalAmount += productPrice * item.quantity
@@ -88,25 +120,32 @@ export const placeOrder = async (req, res, next) => {
       })
     }
 
-    console.log("ORDER VALIDATION PASSED");
-
-    const order = await Order.create({
-      user: userId,
-      products: orderProducts,
-      totalAmount,
-      contact: {
-        name: contact.name.trim(),
-        mobile: contact.mobile.trim(),
-        email: contact.email?.trim() || ''
-      },
-      address: address._id,
-      paymentMethod,
-      paymentStatus: paymentMethod === 'UPI' ? 'success' : 'pending',
-      transactionId: transactionId,
-      orderStatus: 'ordered'
-    })
-
-    console.log("ORDER SAVED");
+    let order
+    try {
+      order = await Order.create({
+        user: userId,
+        products: orderProducts,
+        totalAmount,
+        contact: {
+          name: contact.name.trim(),
+          mobile: contact.mobile.trim(),
+          email: contact.email?.trim() || ''
+        },
+        address: address._id,
+        paymentMethod,
+        paymentStatus: paymentMethod === 'UPI' ? 'success' : 'pending',
+        transactionId: transactionId,
+        orderStatus: 'ordered'
+      })
+    } catch (dbError) {
+      if (dbError.code === 11000) {
+        return res.status(400).json({
+          success: false,
+          message: 'An order has already been created for this payment. Please check your order history.'
+        })
+      }
+      throw dbError
+    }
 
     cart.products = []
     await cart.save()
@@ -139,7 +178,6 @@ export const placeOrder = async (req, res, next) => {
       // Don't fail the order if email fails, just log it
     }
 
-    console.log("ORDER RESPONSE SENT");
     res.status(201).json({ success: true, data: order })
   } catch (error) {
     console.error(error);
@@ -273,6 +311,80 @@ export const updateOrderStatus = async (req, res, next) => {
 
     res.json({ success: true, data: order })
   } catch (error) {
+    next(error)
+  }
+}
+
+export const createManualOrder = async (req, res, next) => {
+  try {
+    const { userId, products, addressId, paymentMethod, transactionId } = req.body
+
+    if (!userId || !products || !addressId || !paymentMethod || !transactionId) {
+      return res.status(400).json({ success: false, message: 'All fields are required' })
+    }
+
+    const user = await User.findById(userId)
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' })
+    }
+
+    const address = await Address.findById(addressId)
+    if (!address) {
+      return res.status(404).json({ success: false, message: 'Address not found' })
+    }
+
+    // Check if duplicate transaction
+    const existingOrder = await Order.findOne({ transactionId })
+    if (existingOrder) {
+      return res.status(400).json({ success: false, message: 'Order already exists for this transaction ID' })
+    }
+
+    const orderProducts = []
+    let totalAmount = 0
+
+    for (const item of products) {
+      const product = await Product.findById(item.productId)
+      if (!product) {
+        return res.status(404).json({ success: false, message: `This item is no longer available.` })
+      }
+      orderProducts.push({
+        product: product._id,
+        quantity: item.quantity,
+        price: product.sellPrice || 0
+      })
+      totalAmount += (product.sellPrice || 0) * item.quantity
+    }
+
+    let order
+    try {
+      order = await Order.create({
+        user: userId,
+        products: orderProducts,
+        totalAmount,
+        contact: {
+          name: user.name || 'Manual Order',
+          mobile: user.mobile || '0000000000',
+          email: user.email
+        },
+        address: address._id,
+        paymentMethod,
+        paymentStatus: 'success',
+        transactionId,
+        orderStatus: 'ordered'
+      })
+    } catch (dbError) {
+      if (dbError.code === 11000) {
+        return res.status(400).json({
+          success: false,
+          message: 'Order already exists for this transaction ID'
+        })
+      }
+      throw dbError
+    }
+
+    res.status(201).json({ success: true, data: order })
+  } catch (error) {
+    console.error(error)
     next(error)
   }
 }

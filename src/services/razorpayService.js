@@ -27,8 +27,6 @@ export const verifyRazorpaySignature = ({ razorpay_order_id, razorpay_payment_id
     .update(`${razorpay_order_id}|${razorpay_payment_id}`)
     .digest('hex')
 
-  console.log('Generated signature:', generatedSignature)
-
   return generatedSignature === razorpay_signature
 }
 

@@ -72,9 +72,11 @@ const orderSchema = new mongoose.Schema(
       default: 'pending'
     },
     transactionId: {
-  type: String,
-  default: null
-},
+      type: String,
+      unique: true,
+      sparse: true,
+      default: null
+    },
     orderStatus: {
       type: String,
       enum: ['ordered', 'approved', 'shipped', 'out_for_delivery', 'delivered', 'cancelled'],

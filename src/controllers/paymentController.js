@@ -1,6 +1,8 @@
 import Payment from '../models/paymentModel.js'
 import { createRazorpayOrder, verifyRazorpaySignature, fetchRazorpayPayment } from '../services/razorpayService.js'
 import { errorResponse, successResponse } from '../utils/response.js'
+import Cart from '../../models/Cart.js'
+import Product from '../../models/Product.js'
 
 export const createOrder = async (req, res) => {
   try {
@@ -12,6 +14,29 @@ export const createOrder = async (req, res) => {
       return errorResponse(res, 'Amount must be at least 100 paise', 400)
     }
 
+    const userId = req.user.id
+
+    // Validate cart items before allowing Razorpay order creation
+    const cart = await Cart.findOne({ userId })
+    if (!cart || cart.products.length === 0) {
+      return errorResponse(res, 'Your cart is empty', 400)
+    }
+
+    for (const item of cart.products) {
+      const product = await Product.findById(item.productId)
+      if (!product) {
+        return errorResponse(res, `Product no longer exists: ${item.productId}`, 400)
+      }
+      if (product.isPaused) {
+        return errorResponse(res, `Product is no longer available: ${product.name || 'Product'}`, 400)
+      }
+      const rawStock = product.stock !== undefined && product.stock !== null ? Number(product.stock) : 0
+      const finalStock = rawStock < 0 ? 0 : rawStock
+      if (finalStock <= 0 || finalStock < item.quantity) {
+        return errorResponse(res, `Insufficient stock for product: ${product.name || 'Product'}`, 400)
+      }
+    }
+
     // Validate currency === 'INR'
     if (currency && currency !== 'INR') {
       return errorResponse(res, 'Currency must be INR', 400)
@@ -19,9 +44,6 @@ export const createOrder = async (req, res) => {
 
     const amountInPaise = Math.round(amountNumber)
     const order = await createRazorpayOrder(amountInPaise, currency || 'INR', receipt)
-
-    // Safe logs only
-    console.log(`Order created: ${order.id}, Amount: ${order.amount}, Currency: ${order.currency}`)
 
     return res.status(201).json({
       success: true,
@@ -46,7 +68,6 @@ export const createOrder = async (req, res) => {
 
 export const verifyPayment = async (req, res) => {
   try {
-    console.log('Incoming payload:', req.body)
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body
 
     // Ensure all fields are present (Step 7: Production Safety)
@@ -61,13 +82,11 @@ export const verifyPayment = async (req, res) => {
       razorpay_signature
     })
 
-    console.log('Verification result:', isValid)
-
     if (!isValid) {
-      console.log(`Verification failed: Signature mismatch for Order: ${razorpay_order_id}`)
+      console.error(`Verification failed: Signature mismatch for Order: ${razorpay_order_id}`)
       return res.status(400).json({
         success: false,
-        message: 'Invalid signature'
+        message: 'Payment verification failed. Please contact support if money was deducted.'
       })
     }
 
@@ -82,15 +101,12 @@ export const verifyPayment = async (req, res) => {
     }
 
     if (paymentDetails.status !== 'captured') {
-      console.log(`Verification failed: Payment ${razorpay_payment_id} status is ${paymentDetails.status}, expected captured`)
+      console.error(`Verification failed: Payment ${razorpay_payment_id} status is ${paymentDetails.status}, expected captured`)
       return res.status(400).json({
         success: false,
-        message: 'Payment not captured'
+        message: 'Payment verification failed. Please contact support if money was deducted.'
       })
     }
-
-    // Safe logs: keep only payment_id, order_id, verification status
-    console.log(`Payment verified successfully: Payment ID: ${razorpay_payment_id}, Order ID: ${razorpay_order_id}`)
 
     let paymentRecord = null
     try {
