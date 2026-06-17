@@ -50,6 +50,7 @@ router.post(
   body('sellPrice').optional().custom(isStringOrNumber).withMessage('Sell price must be a string or number'),
   body('gst').optional().custom(isStringOrNumber).withMessage('GST must be a string or number'),
   body('stock').optional().custom(isStringOrNumber).withMessage('Stock must be a string or number'),
+  body('isFeatured').optional().isBoolean().withMessage('isFeatured must be a boolean'),
   validateRequest,
   createProduct
 )
@@ -67,6 +68,7 @@ router.patch(
   body('sellPrice').optional().custom(isStringOrNumber).withMessage('Sell price must be a string or number'),
   body('gst').optional().custom(isStringOrNumber).withMessage('GST must be a string or number'),
   body('stock').optional().custom(isStringOrNumber).withMessage('Stock must be a string or number'),
+  body('isFeatured').optional().isBoolean().withMessage('isFeatured must be a boolean'),
   validateRequest,
   updateProduct
 )

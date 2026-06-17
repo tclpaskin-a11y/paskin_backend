@@ -39,6 +39,7 @@ export const formatProductResponse = (product) => {
     image: resolvedImage,
     images: resolvedImages,
     isPaused: p.isPaused !== undefined ? p.isPaused : false,
+    isFeatured: p.isFeatured !== undefined ? p.isFeatured : false,
     createdAt: p.createdAt !== undefined ? p.createdAt : null,
     __v: p.__v
   }
@@ -62,7 +63,8 @@ export const createProduct = async (req, res, next) => {
       basePrice,
       sellPrice,
       gst,
-      stock
+      stock,
+      isFeatured
     } = req.body
 
     // Sync name and productName automatically
@@ -104,7 +106,8 @@ export const createProduct = async (req, res, next) => {
       sellPrice,
       gst,
       stock,
-      images
+      images,
+      isFeatured: isFeatured === true || isFeatured === 'true'
     })
 
     res.status(201).json({
@@ -118,7 +121,15 @@ export const createProduct = async (req, res, next) => {
 
 export const getProducts = async (req, res, next) => {
   try {
-    const products = await Product.find().populate('category', 'name')
+    const filter = {}
+    if (req.query.featured === 'true') {
+      filter.isFeatured = true
+    }
+    let query = Product.find(filter).populate('category', 'name')
+    if (req.query.featured === 'true') {
+      query = query.sort({ createdAt: -1 })
+    }
+    const products = await query
     res.json({ success: true, data: formatProductsResponse(products) })
   } catch (error) {
     next(error)
@@ -127,7 +138,15 @@ export const getProducts = async (req, res, next) => {
 
 export const getPublicProducts = async (req, res, next) => {
   try {
-    const products = await Product.find({ isPaused: false }).populate('category', 'name')
+    const filter = { isPaused: false }
+    if (req.query.featured === 'true') {
+      filter.isFeatured = true
+    }
+    let query = Product.find(filter).populate('category', 'name')
+    if (req.query.featured === 'true') {
+      query = query.sort({ createdAt: -1 })
+    }
+    const products = await query
     res.json({ success: true, data: formatProductsResponse(products) })
   } catch (error) {
     next(error)
@@ -180,6 +199,10 @@ export const updateProduct = async (req, res, next) => {
       updateData.name = updateData.productName
     } else if (updateData.name !== undefined) {
       updateData.productName = updateData.name
+    }
+
+    if (updateData.isFeatured !== undefined) {
+      updateData.isFeatured = updateData.isFeatured === true || updateData.isFeatured === 'true'
     }
 
     if (updateData.category) {
